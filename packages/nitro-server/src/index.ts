@@ -322,7 +322,7 @@ export async function bundle (nuxt: Nuxt & { _nitro?: Nitro }): Promise<void> {
           `export const NUXT_DEV_LOGS = ${!!nuxt.options.features.devLogs}`,
           `export const NUXT_ASYNC_CONTEXT = ${!!nuxt.options.experimental.asyncContext}`,
           `export const NUXT_SHARED_DATA = ${!!nuxt.options.experimental.sharedPrerenderData}`,
-          `export const NUXT_RUNTIME_CONFIG_ENV_TYPES = ${!!nuxt.options.experimental.runtimeConfigEnvTypes}`,
+          `export const NUXT_RUNTIME_CONFIG_ENV_TYPES = ${nuxt.options.experimental.runtimeConfigEnvTypes !== false}`,
           `export const NUXT_RUNTIME_CONFIG_TYPES = ${JSON.stringify(types)}`,
         ].join('\n')
       },

@@ -1837,12 +1837,13 @@ export interface ConfigSchema {
 
     /**
      * Automatically convert environment variable overrides for runtime configuration
-     * based on the JavaScript types of the default values defined in `runtimeConfig`.
+     * based on the JavaScript types of the default values defined in `runtimeConfig`
+     * using a modified, safe `destr` engine.
      *
+     * When enabled (`true`, default), overrides are cast to match the boolean or number type of the default value.
      * When disabled (`false`), environment variable overrides remain raw strings (Nitro 3 behavior).
-     * When enabled (`true`), overrides are cast to match the boolean or number type of the default value.
      *
-     * @default false
+     * @default true
      */
     runtimeConfigEnvTypes: boolean
 

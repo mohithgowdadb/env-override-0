@@ -19,7 +19,7 @@ export function useRuntimeConfig (): Record<string, any> {
     prefix: 'NITRO_',
     altPrefix: 'NUXT_',
     envExpansion: nuxt.options.nitro.experimental?.envExpansion ?? !!process.env.NITRO_ENV_EXPANSION,
-    envTypes: nuxt.options.experimental?.runtimeConfigEnvTypes ?? nuxt.options.nitro?.experimental?.runtimeConfigEnvTypes,
+    envTypes: (nuxt.options.experimental?.runtimeConfigEnvTypes ?? nuxt.options.nitro?.experimental?.runtimeConfigEnvTypes) !== false,
     dev: nuxt.options.dev,
   })
 }

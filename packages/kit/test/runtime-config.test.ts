@@ -228,7 +228,7 @@ describe('useRuntimeConfig environment variable type compatibility (runtimeConfi
       value: 'invalid',
     })
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[nuxt] Failed to convert environment variable for `value` to number'),
+      expect.stringContaining('[nuxt] Failed to cast environment variable for `value` to number'),
     )
     expect(warnSpy.mock.calls[0]?.[0]).not.toContain('invalid')
   })
@@ -276,9 +276,33 @@ describe('useRuntimeConfig environment variable type compatibility (runtimeConfi
       enabled: 'yes',
     })
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[nuxt] Failed to convert environment variable for `enabled` to boolean'),
+      expect.stringContaining('[nuxt] Failed to cast environment variable for `enabled` to boolean'),
     )
     expect(warnSpy.mock.calls[0]?.[0]).not.toContain('yes')
+  })
+
+  it('Test H — Default behavior: casting is enabled by default without specifying flag', () => {
+    const runtimeConfig = {
+      port: 3000,
+      enabled: false,
+    }
+    vi.spyOn(context, 'useNuxt').mockReturnValue({
+      options: {
+        dev: true,
+        nitro: {
+          runtimeConfig,
+          experimental: {},
+        },
+      },
+    } as any)
+    mockKlona.mockReturnValue(structuredClone(runtimeConfig))
+    vi.stubEnv('NUXT_PORT', '8080')
+    vi.stubEnv('NUXT_ENABLED', 'true')
+
+    expect(useRuntimeConfig()).toEqual({
+      port: 8080,
+      enabled: true,
+    })
   })
 })
 

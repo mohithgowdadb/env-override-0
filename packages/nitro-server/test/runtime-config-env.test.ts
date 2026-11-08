@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { _resetRuntimeConfigCache, useRuntimeConfig } from '../src/runtime/runtime-config.ts'
 import { useRuntimeConfig as useCompatRuntimeConfig } from '../src/runtime/compat/runtime-config.ts'
-import { convertEnvValue, inferSupportedType, snapshotRuntimeConfigTypes } from '../src/runtime/utils/env-types.ts'
+import { convertEnvValue, inferSupportedType, modifiedDestr, snapshotRuntimeConfigTypes } from '../src/runtime/utils/env-types.ts'
 
 const mockNitroRuntimeConfig = vi.fn()
 vi.mock('nitro/runtime-config', () => ({
@@ -14,7 +14,7 @@ let mockVirtualNitroConfig: {
   NUXT_RUNTIME_CONFIG_TYPES: Record<string, any>
 } = {
   NUXT_DEV: true,
-  NUXT_RUNTIME_CONFIG_ENV_TYPES: false,
+  NUXT_RUNTIME_CONFIG_ENV_TYPES: true,
   NUXT_RUNTIME_CONFIG_TYPES: {},
 }
 
@@ -35,7 +35,7 @@ describe('nitro-server runtime-config type compatibility (Nuxt Issue #36846)', (
     _resetRuntimeConfigCache()
     mockVirtualNitroConfig = {
       NUXT_DEV: true,
-      NUXT_RUNTIME_CONFIG_ENV_TYPES: false,
+      NUXT_RUNTIME_CONFIG_ENV_TYPES: true,
       NUXT_RUNTIME_CONFIG_TYPES: {},
     }
   })
@@ -45,32 +45,8 @@ describe('nitro-server runtime-config type compatibility (Nuxt Issue #36846)', (
     _resetRuntimeConfigCache()
   })
 
-  describe('Flag OFF (Default Nitro 3 behavior)', () => {
-    it('preserves string environment overrides when flag is disabled', () => {
-      mockVirtualNitroConfig.NUXT_RUNTIME_CONFIG_ENV_TYPES = false
-      mockVirtualNitroConfig.NUXT_RUNTIME_CONFIG_TYPES = {
-        session: {
-          cookie: {
-            secure: 'boolean',
-          },
-        },
-      }
-
-      mockNitroRuntimeConfig.mockReturnValue({
-        session: {
-          cookie: {
-            secure: 'false',
-          },
-        },
-      })
-
-      const config = useRuntimeConfig()
-      expect(config.session.cookie.secure).toBe('false')
-    })
-  })
-
-  describe('Flag ON (Type-aware conversion)', () => {
-    it('converts boolean environment overrides based on default snapshot', () => {
+  describe('Default Behavior (Enabled by Default with modifiedDestr)', () => {
+    it('automatically casts boolean environment overrides by default', () => {
       mockVirtualNitroConfig.NUXT_RUNTIME_CONFIG_ENV_TYPES = true
       mockVirtualNitroConfig.NUXT_RUNTIME_CONFIG_TYPES = {
         session: {
@@ -98,7 +74,7 @@ describe('nitro-server runtime-config type compatibility (Nuxt Issue #36846)', (
       expect(config.disabledFlag).toBe(false)
     })
 
-    it('converts number environment overrides based on default snapshot', () => {
+    it('automatically casts number environment overrides by default', () => {
       mockVirtualNitroConfig.NUXT_RUNTIME_CONFIG_ENV_TYPES = true
       mockVirtualNitroConfig.NUXT_RUNTIME_CONFIG_TYPES = {
         database: {
@@ -122,7 +98,7 @@ describe('nitro-server runtime-config type compatibility (Nuxt Issue #36846)', (
       expect(config.factor).toBe(1500)
     })
 
-    it('preserves strings when default is string', () => {
+    it('preserves strings when default is string (avoids destr 4848e0 bug)', () => {
       mockVirtualNitroConfig.NUXT_RUNTIME_CONFIG_ENV_TYPES = true
       mockVirtualNitroConfig.NUXT_RUNTIME_CONFIG_TYPES = {
         apiKey: 'string',
@@ -214,6 +190,72 @@ describe('nitro-server runtime-config type compatibility (Nuxt Issue #36846)', (
     })
   })
 
+  describe('Opt-out: Flag Disabled (runtimeConfigEnvTypes: false)', () => {
+    it('preserves raw Nitro 3 string overrides when explicitly disabled', () => {
+      mockVirtualNitroConfig.NUXT_RUNTIME_CONFIG_ENV_TYPES = false
+      mockVirtualNitroConfig.NUXT_RUNTIME_CONFIG_TYPES = {
+        session: {
+          cookie: {
+            secure: 'boolean',
+          },
+        },
+        port: 'number',
+      }
+
+      mockNitroRuntimeConfig.mockReturnValue({
+        session: {
+          cookie: {
+            secure: 'false',
+          },
+        },
+        port: '4000',
+      })
+
+      const config = useRuntimeConfig()
+      expect(config.session.cookie.secure).toBe('false')
+      expect(config.port).toBe('4000')
+    })
+  })
+
+  describe('modifiedDestr Engine Unit Tests', () => {
+    it('handles booleans with case-insensitivity and numeric variants', () => {
+      expect(modifiedDestr('true')).toBe(true)
+      expect(modifiedDestr('True')).toBe(true)
+      expect(modifiedDestr('TRUE')).toBe(true)
+      expect(modifiedDestr('false')).toBe(false)
+      expect(modifiedDestr('False')).toBe(false)
+      expect(modifiedDestr('1', 'boolean')).toBe(true)
+      expect(modifiedDestr('0', 'boolean')).toBe(false)
+    })
+
+    it('preserves strings with leading zeros (zip codes, phone numbers)', () => {
+      expect(modifiedDestr('01234')).toBe('01234')
+      expect(modifiedDestr('007')).toBe('007')
+      expect(modifiedDestr('0')).toBe(0)
+      expect(modifiedDestr('0.5')).toBe(0.5)
+    })
+
+    it('handles numbers and scientific notation safely', () => {
+      expect(modifiedDestr('3000', 'number')).toBe(3000)
+      expect(modifiedDestr('12.5', 'number')).toBe(12.5)
+      expect(modifiedDestr('-10', 'number')).toBe(-10)
+      expect(modifiedDestr('4848e0', 'number')).toBe(4848)
+      // When target is not number, protects token:
+      expect(modifiedDestr('4848e0', 'string')).toBe('4848e0')
+      expect(modifiedDestr('4848e0')).toBe('4848e0')
+    })
+
+    it('preserves 64-bit BigInt / Snowflake IDs exceeding safe integer limits', () => {
+      expect(modifiedDestr('9007199254740993', 'number')).toBe('9007199254740993')
+    })
+
+    it('handles JSON objects and arrays while protecting against prototype pollution', () => {
+      const parsed = modifiedDestr('{"safe": 123, "__proto__": {"polluted": true}}')
+      expect(parsed).toEqual({ safe: 123 })
+      expect((Object.prototype as any).polluted).toBeUndefined()
+    })
+  })
+
   describe('Type snapshot generation (snapshotRuntimeConfigTypes)', () => {
     it('captures supported leaf types from default config', () => {
       const defaults = {
@@ -247,36 +289,6 @@ describe('nitro-server runtime-config type compatibility (Nuxt Issue #36846)', (
       expect(snapshot).toEqual({
         safe: 'number',
       })
-    })
-  })
-
-  describe('Direct value conversion helper (convertEnvValue)', () => {
-    it('converts booleans strictly', () => {
-      expect(convertEnvValue('true', 'boolean')).toBe(true)
-      expect(convertEnvValue('1', 'boolean')).toBe(true)
-      expect(convertEnvValue('false', 'boolean')).toBe(false)
-      expect(convertEnvValue('0', 'boolean')).toBe(false)
-      expect(convertEnvValue('yes', 'boolean')).toBe('yes')
-      expect(convertEnvValue('no', 'boolean')).toBe('no')
-    })
-
-    it('converts numbers strictly and handles edge cases', () => {
-      expect(convertEnvValue('3000', 'number')).toBe(3000)
-      expect(convertEnvValue('12.5', 'number')).toBe(12.5)
-      expect(convertEnvValue('-10', 'number')).toBe(-10)
-      expect(convertEnvValue('0', 'number')).toBe(0)
-      expect(convertEnvValue('4848e0', 'number')).toBe(4848)
-      expect(convertEnvValue('1.5e3', 'number')).toBe(1500)
-      expect(convertEnvValue('', 'number')).toBe('')
-      expect(convertEnvValue('   ', 'number')).toBe('   ')
-      expect(convertEnvValue('NaN', 'number')).toBe('NaN')
-      expect(convertEnvValue('Infinity', 'number')).toBe('Infinity')
-    })
-
-    it('preserves strings unchanged', () => {
-      expect(convertEnvValue('4848e0', 'string')).toBe('4848e0')
-      expect(convertEnvValue('false', 'string')).toBe('false')
-      expect(convertEnvValue('null', 'string')).toBe('null')
     })
   })
 })
