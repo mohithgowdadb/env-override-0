@@ -106,14 +106,10 @@ function applyEnv (
     } else if (rawEnvValue !== undefined) {
       if (opts.envTypes) {
         const expectedType = inferSupportedType(defaultValue)
-        if (expectedType) {
-          obj[key] = convertEnvValue(rawEnvValue, expectedType, {
-            key: subKey,
-            dev: opts.dev,
-          })
-        } else {
-          obj[key] = rawEnvValue
-        }
+        obj[key] = convertEnvValue(rawEnvValue, expectedType, {
+          key: subKey,
+          dev: opts.dev,
+        })
       } else {
         // Flag OFF: raw string (Nitro 3 behavior)
         obj[key] = rawEnvValue

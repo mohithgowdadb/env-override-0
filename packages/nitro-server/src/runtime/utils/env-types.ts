@@ -188,35 +188,40 @@ export function snapshotRuntimeConfigTypes (config: Record<string, unknown>): Ru
 
 /**
  * Apply type conversion to a runtime configuration object in-place using modifiedDestr.
+ * Iterates through all config keys so values are automatically cast even if no type
+ * or default value was specified in nuxt.config.
  */
 export function applyRuntimeConfigEnvTypes (
   config: Record<string, any>,
-  types: RuntimeConfigTypeMap,
+  types?: RuntimeConfigTypeMap,
   options?: ConvertEnvOptions,
   parentKey = '',
 ): void {
-  if (!config || typeof config !== 'object' || !types || typeof types !== 'object') {
+  if (!config || typeof config !== 'object') {
     return
   }
 
-  for (const key of Object.keys(types)) {
+  for (const key of Object.keys(config)) {
     if (FORBIDDEN_KEYS.has(key)) {
       continue
     }
 
-    const expected = types[key]
+    const expected = types?.[key]
     const currentVal = config[key]
     const keyPath = parentKey ? `${parentKey}.${key}` : key
 
-    if (typeof expected === 'string') {
-      if (typeof currentVal === 'string') {
-        config[key] = modifiedDestr(currentVal, expected, {
+    if (typeof currentVal === 'string') {
+      config[key] = modifiedDestr(
+        currentVal,
+        typeof expected === 'string' ? expected : undefined,
+        {
           ...options,
           key: keyPath,
-        })
-      }
-    } else if (expected && typeof expected === 'object' && currentVal && typeof currentVal === 'object' && !Array.isArray(currentVal)) {
-      applyRuntimeConfigEnvTypes(currentVal, expected, options, keyPath)
+        },
+      )
+    } else if (currentVal && typeof currentVal === 'object' && !Array.isArray(currentVal)) {
+      const nestedTypes = expected && typeof expected === 'object' && !Array.isArray(expected) ? expected : undefined
+      applyRuntimeConfigEnvTypes(currentVal, nestedTypes, options, keyPath)
     }
   }
 }
