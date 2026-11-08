@@ -1,7 +1,7 @@
 import { HTTPError, writeEarlyHints } from 'nitro/h3'
 import type { H3Event } from 'nitro/h3'
 import { useNitroApp, useNitroHooks } from 'nitro/app'
-import { useRuntimeConfig } from 'nitro/runtime-config'
+import { useRuntimeConfig } from '../runtime-config.ts'
 import { FastResponse } from 'srvx'
 import type { NuxtSSRContext } from '#app/types'
 import { createRendererInstance } from 'nuxt/internal/renderer/instance'

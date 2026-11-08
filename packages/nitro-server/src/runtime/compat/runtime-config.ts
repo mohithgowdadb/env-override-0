@@ -1,5 +1,5 @@
 import { klona } from 'klona'
-import { useRuntimeConfig as useNitroRuntimeConfig } from 'nitro/runtime-config'
+import { useRuntimeConfig as useNuxtRuntimeConfig } from '../runtime-config.ts'
 import type { H3Event } from 'nitro/h3'
 
 /**
@@ -8,8 +8,8 @@ import type { H3Event } from 'nitro/h3'
  * Nitro v3 exposes a single shared, env-applied object; without an event this
  * defers to it directly.
  */
-export function useRuntimeConfig (event?: H3Event): Record<string, any> {
-  const shared = useNitroRuntimeConfig() as Record<string, any>
+export function useRuntimeConfig(event?: H3Event): Record<string, any> {
+  const shared = useNuxtRuntimeConfig() as Record<string, any>
   if (!event) {
     return shared
   }

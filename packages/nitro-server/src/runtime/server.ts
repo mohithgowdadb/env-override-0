@@ -40,7 +40,7 @@ export {
 } from 'nitro/h3'
 
 export { getRouteRules, matchRouteRules } from './utils/route-rules'
-export { useRuntimeConfig } from 'nitro/runtime-config'
+export { useRuntimeConfig } from './runtime-config.ts'
 export { useNitroHooks as useServerHooks } from 'nitro/app'
 
 export {
