@@ -1,21 +1,56 @@
-# Nuxt #36846 — Runtime env overrides lose their types
+<div align="center">
 
-Analysis, implementation, and verified solution for [nuxt/nuxt#36846](https://github.com/nuxt/nuxt/issues/36846), prepared for **MACH ZERO — Team 05**.
+# 🔧 Nuxt #36846 — Runtime env overrides lose their types
 
-> **Status:** **Investigation, implementation, unit testing, and live prototype deployment complete.**  
-> - **Branch:** [`fix/runtime-config-env-cast`](https://github.com/mohithgowdadb/env-override-0/tree/fix/runtime-config-env-cast)  
-> - **Unit Tests:** **32/32 passing** across `@nuxt/kit` (17 tests) and `@nuxt/nitro-server` (15 tests).  
-> - **Live Prototype:** [https://playground-dusky-kappa.vercel.app](https://playground-dusky-kappa.vercel.app)
+**Analysis, implementation, and verified solution for [nuxt/nuxt#36846](https://github.com/nuxt/nuxt/issues/36846)**
+*Prepared with care for **MACH ZERO — Team 05***
+
+[![Tests](https://img.shields.io/badge/tests-32%2F32%20passing-brightgreen?style=for-the-badge)](#-verification--test-results)
+[![Kit](https://img.shields.io/badge/%40nuxt%2Fkit-17%20tests-00DC82?style=for-the-badge&logo=nuxtdotjs&logoColor=white)](#-verification--test-results)
+[![Nitro Server](https://img.shields.io/badge/%40nuxt%2Fnitro--server-15%20tests-00DC82?style=for-the-badge&logo=nuxtdotjs&logoColor=white)](#-verification--test-results)
+[![Live Demo](https://img.shields.io/badge/live%20prototype-Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://playground-dusky-kappa.vercel.app)
+
+[🌐 **Live Prototype**](https://playground-dusky-kappa.vercel.app) · [🌿 **Fix Branch**](https://github.com/mohithgowdadb/env-override-0/tree/fix/runtime-config-env-cast) · [🐛 **Original Issue**](https://github.com/nuxt/nuxt/issues/36846)
+
+</div>
 
 ---
 
-## Background
+## 📌 Where We Stand
 
-Nuxt documents that `runtimeConfig` values overridden by `NUXT_` / `NITRO_` environment variables are cast with [`destr`](https://github.com/unjs/destr). With Nitro 3 (`nitrojs/nitro#3634`), the server runtime intentionally stopped doing this: overrides arrive as raw strings. The build-time `useRuntimeConfig()` in `@nuxt/kit` still coerces values, creating an architectural mismatch between build-time and server runtime.
+> **Status:** ✅ **Investigation, implementation, unit testing, and live prototype deployment are complete.**
+>
+> - 🌿 **Branch:** [`fix/runtime-config-env-cast`](https://github.com/mohithgowdadb/env-override-0/tree/fix/runtime-config-env-cast)
+> - 🧪 **Unit Tests:** **32/32 passing** across `@nuxt/kit` (17 tests) and `@nuxt/nitro-server` (15 tests).
+> - 🚀 **Live Prototype:** [https://playground-dusky-kappa.vercel.app](https://playground-dusky-kappa.vercel.app)
 
 ---
 
-## Reproduction
+## 📖 Table of Contents
+
+1. [Background](#-background)
+2. [Reproduction](#-reproduction)
+3. [Root Cause](#-root-cause)
+4. [Relevant Files](#-relevant-files)
+5. [Implemented Solution](#-implemented-solution)
+6. [Investigation Log](#-investigation-log-what-we-tried-where-it-fell-short-how-we-resolved-it)
+7. [AI Assistance Disclosure](#-ai-assistance-disclosure)
+8. [Edge Cases Verified](#-edge-cases-verified)
+9. [Verification & Test Results](#-verification--test-results)
+10. [Current Status](#-current-status)
+11. [References](#-references)
+
+---
+
+## 🌱 Background
+
+Nuxt documents that `runtimeConfig` values overridden by `NUXT_` / `NITRO_` environment variables are cast with [`destr`](https://github.com/unjs/destr). With Nitro 3 (`nitrojs/nitro#3634`), the server runtime intentionally stopped doing this: overrides now arrive as raw strings. The build-time `useRuntimeConfig()` in `@nuxt/kit` still coerces values, so the two sides of the same app no longer agree with each other. That architectural mismatch between build time and server runtime is the heart of this issue.
+
+---
+
+## 🐞 Reproduction
+
+Here's the smallest way we found to see the problem for yourself:
 
 ```bash
 # .env
@@ -29,6 +64,8 @@ if (config.session.cookie.secure) { /* runs in Nitro 3: "false" is truthy! */ }
 config.port + 1                            // "30001", not 3001
 ```
 
+And here is what you get, side by side:
+
 | Key / Expression | Expected (Documented) | Actual (Nuxt 5 / Nitro 3 Unpatched) | Fixed Behavior (Team 05) |
 |---|---|---|---|
 | `session.cookie.secure` | `false` (boolean) | `"false"` (truthy string) | `false` (boolean) |
@@ -37,9 +74,9 @@ config.port + 1                            // "30001", not 3001
 
 ---
 
-## Root Cause
+## 🧭 Root Cause
 
-Two code paths implement env overrides differently:
+The behaviour differs because two separate code paths implement env overrides in two different ways:
 
 | Context | File | `destr` / Coercion |
 |---|---|---|
@@ -47,7 +84,9 @@ Two code paths implement env overrides differently:
 | **Server runtime** | `nitro/runtime-config` (Nitro 3) | No, removed upstream in `nitrojs/nitro#3634` |
 | **Nuxt runtime shim** | `packages/nitro-server/src/runtime/compat/runtime-config.ts` | Patched: delegates to guarded `modifiedDestr` with auto-discovery |
 
-Nitro 3 removed `destr` deliberately: environment variables are strings by POSIX/12-factor standards, silent coercion causes edge-case bugs (e.g. alphanumeric hashes like `"4848e0"` becoming numbers), and Nitro is moving toward schema-defined config. However, the Nuxt ecosystem (e.g., `nuxt-auth-utils`, session cookies, feature flags) depends on automatic casting.
+Nitro 3 removed `destr` deliberately: environment variables are strings by POSIX/12-factor standards, and silent coercion causes edge-case bugs (for example, alphanumeric hashes like `"4848e0"` becoming numbers). Nitro is also moving toward schema-defined config. The Nuxt ecosystem, however (`nuxt-auth-utils`, session cookies, feature flags), depends on automatic casting.
+
+### How the fix flows
 
 ```mermaid
 flowchart LR
@@ -63,7 +102,9 @@ flowchart LR
 
 ---
 
-## Relevant Files
+## 🗂️ Relevant Files
+
+These are the files we touched (or relied on) and what each one does in the fix:
 
 | File | Role | Status in Fix |
 |---|---|---|
@@ -82,11 +123,11 @@ flowchart LR
 
 ---
 
-## Implemented Solution
+## 🛠️ Implemented Solution
 
-We restored safe, automatic coercion in the Nuxt runtime compatibility layer, enabled by default, and gated by the `experimental.runtimeConfigEnvTypes` configuration flag.
+We restored safe, automatic coercion in the Nuxt runtime compatibility layer. It is enabled by default and gated by the `experimental.runtimeConfigEnvTypes` configuration flag.
 
-### 1. The Gate Mechanism
+### 1. 🚪 The Gate Mechanism
 
 ```ts
 // nuxt.config.ts
@@ -98,12 +139,12 @@ export default defineNuxtConfig({
 })
 ```
 
-- **Enabled by Default:** Ensures backward compatibility so existing Nuxt apps and modules (`nuxt-auth-utils`) work seamlessly without manual configuration.
-- **Opt-Out Escape Hatch:** Developers requiring strict POSIX/Nitro 3 string semantics can toggle `runtimeConfigEnvTypes: false`.
+- **Enabled by Default:** Ensures backward compatibility, so existing Nuxt apps and modules (`nuxt-auth-utils`) work seamlessly without any manual configuration.
+- **Opt-Out Escape Hatch:** Developers who need strict POSIX/Nitro 3 string semantics can set `runtimeConfigEnvTypes: false`.
 
-### 2. The `modifiedDestr` Engine
+### 2. ⚙️ The `modifiedDestr` Engine
 
-Importing classic `destr` directly was insufficient because it introduced critical production vulnerabilities. Our `modifiedDestr` implementation adds explicit guard rails:
+Importing classic `destr` directly wasn't enough, because it introduced real production risks. So our `modifiedDestr` implementation adds explicit guard rails:
 
 1. **Alphanumeric Token Guard:** Strings matching exponential notation (`"4848e0"`) are preserved as strings unless the schema explicitly expects a `'number'`.
 2. **Leading Zero Guard:** Zip codes and phone numbers (`"01234"`, `"+007"`) are preserved as strings.
@@ -111,13 +152,13 @@ Importing classic `destr` directly was insufficient because it introduced critic
 4. **Prototype Pollution Protection:** JSON parsing strips forbidden keys (`__proto__`, `constructor`, `prototype`).
 5. **Case-Insensitive Booleans:** Accepts `"true"`, `"false"`, `"TRUE"`, `"FALSE"`, and numeric flags `"1"`/`"0"`.
 
-### 3. Pure `.env` Auto-Discovery
+### 3. 🔍 Pure `.env` Auto-Discovery
 
-Nitro's native `applyEnv` only checks environment variables for keys that were pre-declared in `nuxt.config.ts`. In real-world projects, developers often declare keys exclusively in `.env`. 
+Nitro's native `applyEnv` only checks environment variables for keys that were pre-declared in `nuxt.config.ts`. In real-world projects, though, developers often declare keys exclusively in `.env`.
 
-Our implementation automatically scans `process.env` for `NUXT_*` and `NUXT_PUBLIC_*`, converts them to camelCase, and casts them dynamically even when `runtimeConfig: {}` is completely empty.
+Our implementation automatically scans `process.env` for `NUXT_*` and `NUXT_PUBLIC_*`, converts them to camelCase, and casts them dynamically, even when `runtimeConfig: {}` is completely empty.
 
-### 4. Shim Implementation (`packages/nitro-server/src/runtime/runtime-config.ts`)
+### 4. 🧩 Shim Implementation (`packages/nitro-server/src/runtime/runtime-config.ts`)
 
 ```ts
 import { useRuntimeConfig as useNitroRuntimeConfig } from 'nitro/runtime-config'
@@ -150,22 +191,24 @@ export function useRuntimeConfig (): NitroRuntimeConfig {
 
 ---
 
-## Investigation Log: What We Tried, Where It Fell Short, How We Resolved It
+## 🕵️ Investigation Log: What We Tried, Where It Fell Short, How We Resolved It
 
 ### Chronology of Investigation
 
 1. **Traced Commit History:** Checked `git log` and PR #36884 (`4546dc669`), which touched `packages/kit/src/runtime-config.ts`. Identified that Kit passed merged config to Nitro, but Nitro v3 stripped `destr`.
-2. **Analyzed Upstream PR #3634:** Verified why Nitro removed `destr`—to avoid silent coercion bugs and align with POSIX strings.
-3. **Verified Dependency Behavior:** Tested `destr@2.0.5` directly via Node.js script. Proved that `destr('4848e0')` corrupts to `4848`, while `destr('01234')` returns `'01234'` (confirming the theoretical suspicion from Round 2).
-4. **Encountered SSR Bundler Issue:** When exposing the flag via `#internal/nuxt/nitro-config.mjs`, Vite SSR and Webpack threw missing module errors. Resolved by adding the module to externalized server dependencies in `packages/vite/src/shared/server.ts` and `packages/webpack/src/utils/server-externals.ts`.
-5. **Executed Automated Tests:** Ran Vitest across `@nuxt/kit` and `@nuxt/nitro-server`, achieving 100% pass rate (32/32 tests).
+2. **Analyzed Upstream PR #3634:** Verified why Nitro removed `destr`: to avoid silent coercion bugs and align with POSIX strings.
+3. **Verified Dependency Behavior:** Tested `destr@2.0.5` directly via a Node.js script. Proved that `destr('4848e0')` corrupts to `4848`, while `destr('01234')` returns `'01234'` (confirming the theoretical suspicion from Round 2).
+4. **Encountered SSR Bundler Issue:** When exposing the flag via `#internal/nuxt/nitro-config.mjs`, Vite SSR and Webpack threw missing module errors. We resolved this by adding the module to the externalized server dependencies in `packages/vite/src/shared/server.ts` and `packages/webpack/src/utils/server-externals.ts`.
+5. **Executed Automated Tests:** Ran Vitest across `@nuxt/kit` and `@nuxt/nitro-server`, achieving a 100% pass rate (32/32 tests).
 6. **Deployed Working Prototype:** Built and deployed an interactive Nuxt 5 application on Vercel (`https://playground-dusky-kappa.vercel.app`).
 
 ### Approaches Evaluated
 
+We didn't land on this design on the first try. Here are the paths we considered and why we moved on from each:
+
 | Approach / Assumption | Where It Fell Short | How We Resolved It |
 |---|---|---|
-| **Option A:** Restore classic `destr` unconditionally | Fails on API tokens (`"4848e0"` $\rightarrow$ `4848`), truncates BigInts, and provides no opt-out for apps wanting raw strings | Designed `modifiedDestr` with token guards, safe integer limits, and prototype defense |
+| **Option A:** Restore classic `destr` unconditionally | Fails on API tokens (`"4848e0"` → `4848`), truncates BigInts, and provides no opt-out for apps wanting raw strings | Designed `modifiedDestr` with token guards, safe integer limits, and prototype defense |
 | **Option B:** Opt-in flag only (`runtimeConfigEnvTypes: true` required) | Leaves existing Nuxt 3/4 apps and ecosystem modules broken upon upgrading to Nuxt 5 | Default to `true` with an opt-out toggle (`false`) |
 | **Option C:** Accept raw strings, update documentation, ship manual helpers | Breaking change for hundreds of community modules (e.g. `nuxt-auth-utils`) | Restored transparent compatibility at the Nuxt runtime shim layer |
 | **Blind traversal over all keys** | Nitro's output doesn't indicate which keys originated from env, risking mutation of intentional string defaults | Added schema snapshotting + `NUXT_*` prefix auto-discovery |
@@ -173,9 +216,10 @@ export function useRuntimeConfig (): NitroRuntimeConfig {
 
 ---
 
-## AI Assistance Disclosure
+## 🤝 AI Assistance Disclosure
 
-In accordance with MACH ZERO guidelines, we disclose that AI assistance (Google DeepMind Antigravity) was used for:
+In accordance with MACH ZERO guidelines, we want to be upfront that AI assistance (Google DeepMind Antigravity) was used for:
+
 - Codebase indexing, cross-referencing upstream PRs, and tracing symbol definitions.
 - Generating unit test edge-case fixtures (scientific notation, hex tokens, BigInt boundaries).
 - Assisting in debugging Vite SSR virtual module externalization.
@@ -185,20 +229,22 @@ All architectural decisions, code changes, regex guards, test verifications, and
 
 ---
 
-## Edge Cases Verified
+## 🧪 Edge Cases Verified
+
+These are the inputs that make or break an env-casting layer, and how each one behaves:
 
 | Input | Expected | Classic `destr` | Our `modifiedDestr` | Status |
 |---|---|---|---|---|
-| `"false"` | `false` | `false` | `false` (boolean) | **Verified** |
-| `"4000"` | `4000` | `4000` | `4000` (number) | **Verified** |
-| `"01234"` | `"01234"` | `"01234"` | `"01234"` (string preserved) | **Verified** |
-| `"4848e0"` | `"4848e0"` | `4848` (corrupted!) | `"4848e0"` (string preserved) | **Verified** |
-| `"9007199254740993"` | `"9007199254740993"` | `9007199254740992` (precision loss) | `"9007199254740993"` (string preserved) | **Verified** |
-| `{"__proto__":{}}` | Safe Object | Pollutable | Sanitized / Blocked | **Verified** |
+| `"false"` | `false` | `false` | `false` (boolean) | ✅ **Verified** |
+| `"4000"` | `4000` | `4000` | `4000` (number) | ✅ **Verified** |
+| `"01234"` | `"01234"` | `"01234"` | `"01234"` (string preserved) | ✅ **Verified** |
+| `"4848e0"` | `"4848e0"` | `4848` (corrupted!) | `"4848e0"` (string preserved) | ✅ **Verified** |
+| `"9007199254740993"` | `"9007199254740993"` | `9007199254740992` (precision loss) | `"9007199254740993"` (string preserved) | ✅ **Verified** |
+| `{"__proto__":{}}` | Safe Object | Pollutable | Sanitized / Blocked | ✅ **Verified** |
 
 ---
 
-## Verification & Test Results
+## ✅ Verification & Test Results
 
 ### 1. Automated Test Suites (32/32 Passed)
 
@@ -213,7 +259,9 @@ pnpm vitest packages/nitro-server/test/runtime-config-env.test.ts --run
 - **`packages/kit/test/runtime-config.test.ts`:** 17 passed (100%)
 - **`packages/nitro-server/test/runtime-config-env.test.ts`:** 15 passed (100%)
 
-### 2. Live Interactive Prototype
+### 2. 🚀 Live Interactive Prototype
+
+Don't just take our word for it. Try it yourself:
 
 - **Live URL:** [https://playground-dusky-kappa.vercel.app](https://playground-dusky-kappa.vercel.app)
 - **Features Verified in Production:**
@@ -224,24 +272,34 @@ pnpm vitest packages/nitro-server/test/runtime-config-env.test.ts --run
 
 ---
 
-## Current Status
+## 📊 Current Status
+
+A quick look at how far we've come since Round 2:
 
 | Item | Round 2 State | Final State (Team 05) |
 |---|---|---|
-| Root cause analysis | Done | **Done** |
-| Solution design | Proposed | **Fully Designed & Implemented** |
-| Gate semantics & flag | Proposed | **Implemented (`experimental.runtimeConfigEnvTypes`)** |
-| Code changes | Not started | **Completed on branch `fix/runtime-config-env-cast`** |
-| Unit test execution | Blocked | **32/32 tests passing** |
-| Edge-case validation | Unverified | **Verified via Node script & Vitest** |
-| Live Prototype | None | **Deployed on Vercel** |
+| Root cause analysis | Done | ✅ **Done** |
+| Solution design | Proposed | ✅ **Fully Designed & Implemented** |
+| Gate semantics & flag | Proposed | ✅ **Implemented (`experimental.runtimeConfigEnvTypes`)** |
+| Code changes | Not started | ✅ **Completed on branch `fix/runtime-config-env-cast`** |
+| Unit test execution | Blocked | ✅ **32/32 tests passing** |
+| Edge-case validation | Unverified | ✅ **Verified via Node script & Vitest** |
+| Live Prototype | None | ✅ **Deployed on Vercel** |
 
 ---
 
-## References
+## 🔗 References
 
-- Issue: <https://github.com/nuxt/nuxt/issues/36846>
-- Nitro PR #3634 (removal of `destr`): <https://github.com/nitrojs/nitro/pull/3634>
-- Repository Branch: <https://github.com/mohithgowdadb/env-override-0/tree/fix/runtime-config-env-cast>
-- Live Vercel Prototype: <https://playground-dusky-kappa.vercel.app>
+- 🐛 Issue: <https://github.com/nuxt/nuxt/issues/36846>
+- 📦 Nitro PR #3634 (removal of `destr`): <https://github.com/nitrojs/nitro/pull/3634>
+- 🌿 Repository Branch: <https://github.com/mohithgowdadb/env-override-0/tree/fix/runtime-config-env-cast>
+- 🚀 Live Vercel Prototype: <https://playground-dusky-kappa.vercel.app>
 
+---
+
+<div align="center">
+
+**Built by MACH ZERO — Team 05** 💚
+*Thanks for taking the time to read through our work.*
+
+</div>
