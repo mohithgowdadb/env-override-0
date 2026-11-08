@@ -186,10 +186,14 @@ export function snapshotRuntimeConfigTypes (config: Record<string, unknown>): Ru
   return result
 }
 
+function toCamelCase (str: string): string {
+  return str.toLowerCase().replace(/_([a-z0-9])/g, (_, g) => g.toUpperCase())
+}
+
 /**
  * Apply type conversion to a runtime configuration object in-place using modifiedDestr.
- * Iterates through all config keys so values are automatically cast even if no type
- * or default value was specified in nuxt.config.
+ * Iterates through all config keys and auto-discovers NUXT_ environment variables
+ * so values are automatically cast even if no type, default, or key was specified in nuxt.config.
  */
 export function applyRuntimeConfigEnvTypes (
   config: Record<string, any>,
@@ -199,6 +203,29 @@ export function applyRuntimeConfigEnvTypes (
 ): void {
   if (!config || typeof config !== 'object') {
     return
+  }
+
+  // Auto-discover environment variables defined ONLY in .env (zero-config in nuxt.config)
+  if (parentKey === '' && typeof process !== 'undefined' && process.env) {
+    for (const envKey of Object.keys(process.env)) {
+      if (envKey.startsWith('NUXT_') && !envKey.startsWith('NUXT_ENV_') && !envKey.startsWith('NUXT_INTERNAL_')) {
+        const rawVal = process.env[envKey]
+        if (typeof rawVal === 'string') {
+          if (envKey.startsWith('NUXT_PUBLIC_')) {
+            config.public ||= {}
+            const prop = toCamelCase(envKey.slice(12))
+            if (config.public[prop] === undefined) {
+              config.public[prop] = modifiedDestr(rawVal)
+            }
+          } else {
+            const prop = toCamelCase(envKey.slice(5))
+            if (config[prop] === undefined) {
+              config[prop] = modifiedDestr(rawVal)
+            }
+          }
+        }
+      }
+    }
   }
 
   for (const key of Object.keys(config)) {

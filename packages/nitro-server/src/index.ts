@@ -100,6 +100,25 @@ export async function bundle (nuxt: Nuxt & { _nitro?: Nitro }): Promise<void> {
 
   addTemplate(nitroSchemaTemplate)
 
+  addTemplate({
+    filename: 'nitro-config.mjs',
+    getContents: () => {
+      const types = nuxt.options.experimental.runtimeConfigEnvTypes !== false
+        ? snapshotRuntimeConfigTypes((nuxt._nitro?.options.runtimeConfig || nuxt.options.runtimeConfig) as Record<string, unknown>)
+        : {}
+      return [
+        `export const NUXT_DEV = ${!!nuxt.options.dev}`,
+        `export const NUXT_ERROR_CHANNEL = ${JSON.stringify(nuxt.options.devServer.errorChannel)}`,
+        `export const NUXT_DEV_LOGS = ${!!nuxt.options.features.devLogs}`,
+        `export const NUXT_ASYNC_CONTEXT = ${!!nuxt.options.experimental.asyncContext}`,
+        `export const NUXT_SHARED_DATA = ${!!nuxt.options.experimental.sharedPrerenderData}`,
+        `export const NUXT_RUNTIME_CONFIG_ENV_TYPES = ${nuxt.options.experimental.runtimeConfigEnvTypes !== false}`,
+        `export const NUXT_RUNTIME_CONFIG_TYPES = ${JSON.stringify(types)}`,
+      ].join('\n')
+    },
+  })
+  nuxt.options.alias['#internal/nuxt/nitro-config.mjs'] = resolve(nuxt.options.buildDir, 'nitro-config.mjs')
+
   const importDirs = new Set<string>()
   if (nuxt.options.nitro.imports !== false) {
     for (const dir of resolveServerImportDirs(nuxt, { nestedUtils: legacy.imports })) {
@@ -312,20 +331,7 @@ export async function bundle (nuxt: Nuxt & { _nitro?: Nitro }): Promise<void> {
       '#internal/nuxt/error-channel': () => nuxt.options.dev
         ? `export * from ${JSON.stringify(resolve(distDir, 'runtime/utils/error-channel'))}`
         : 'export {}',
-      '#internal/nuxt/nitro-config.mjs': () => {
-        const types = nuxt.options.experimental.runtimeConfigEnvTypes
-          ? snapshotRuntimeConfigTypes((nuxt._nitro?.options.runtimeConfig || nuxt.options.runtimeConfig) as Record<string, unknown>)
-          : {}
-        return [
-          `export const NUXT_DEV = ${!!nuxt.options.dev}`,
-          `export const NUXT_ERROR_CHANNEL = ${JSON.stringify(nuxt.options.devServer.errorChannel)}`,
-          `export const NUXT_DEV_LOGS = ${!!nuxt.options.features.devLogs}`,
-          `export const NUXT_ASYNC_CONTEXT = ${!!nuxt.options.experimental.asyncContext}`,
-          `export const NUXT_SHARED_DATA = ${!!nuxt.options.experimental.sharedPrerenderData}`,
-          `export const NUXT_RUNTIME_CONFIG_ENV_TYPES = ${nuxt.options.experimental.runtimeConfigEnvTypes !== false}`,
-          `export const NUXT_RUNTIME_CONFIG_TYPES = ${JSON.stringify(types)}`,
-        ].join('\n')
-      },
+      '#internal/nuxt/nitro-config.mjs': () => nuxt.vfs['#build/nitro-config.mjs'] || '',
     },
     routeRules: {
       '/**': typeof nuxt.options.experimental.ssrStreaming === 'object' && nuxt.options.experimental.ssrStreaming.enabled

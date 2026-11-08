@@ -15,7 +15,7 @@ export function useRuntimeConfig (): NitroRuntimeConfig {
   const enabled = nitroConfig?.NUXT_RUNTIME_CONFIG_ENV_TYPES !== false
   const types = nitroConfig?.NUXT_RUNTIME_CONFIG_TYPES
   const isDev = nitroConfig?.NUXT_DEV ?? Boolean(import.meta.dev)
-  if (enabled && types) {
+  if (enabled) {
     applyRuntimeConfigEnvTypes(config as Record<string, any>, types, {
       dev: isDev,
     })

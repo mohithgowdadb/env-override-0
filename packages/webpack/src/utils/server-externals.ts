@@ -43,6 +43,7 @@ export function createServerExternals (nuxt: Nuxt, options: { inline?: string[] 
   if (!nuxt.options.dev) {
     external.add('#internal/nuxt/paths')
     external.add('#internal/nuxt/app-config')
+    external.add('#internal/nuxt/nitro-config.mjs')
     external.add('#app-manifest')
   }
 

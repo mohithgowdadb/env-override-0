@@ -42,6 +42,7 @@ export function ssrEnvironment (nuxt: Nuxt, serverEntry: string) {
         'nitropack/runtime',
         '#internal/nuxt/paths',
         '#internal/nuxt/app-config',
+        '#internal/nuxt/nitro-config.mjs',
         '#app-manifest',
         '#shared',
       ]
