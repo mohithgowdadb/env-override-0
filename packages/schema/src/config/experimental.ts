@@ -71,6 +71,7 @@ export default defineResolvers({
       $resolve: val => val === 'isomorphic' || typeof val === 'boolean' ? val : false,
     },
     runtimeBaseURL: false,
+    runtimeConfigEnvTypes: false,
     decorators: false,
     asyncEntry: {
       $resolve: val => typeof val === 'boolean' ? val : false,

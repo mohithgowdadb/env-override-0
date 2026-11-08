@@ -1836,6 +1836,17 @@ export interface ConfigSchema {
     runtimeBaseURL: boolean
 
     /**
+     * Automatically convert environment variable overrides for runtime configuration
+     * based on the JavaScript types of the default values defined in `runtimeConfig`.
+     *
+     * When disabled (`false`), environment variable overrides remain raw strings (Nitro 3 behavior).
+     * When enabled (`true`), overrides are cast to match the boolean or number type of the default value.
+     *
+     * @default false
+     */
+    runtimeConfigEnvTypes: boolean
+
+    /**
      * Whether to enable a compatibility layer for Nitro auto imports.
      * We recommend migrating to direct imports instead.
      * @default false
