@@ -1,5 +1,4 @@
 import process from 'node:process'
-import destr from 'destr'
 import { snakeCase } from 'scule'
 import { klona } from 'klona'
 import type { NitroConfig } from '@nuxt/schema'
@@ -7,6 +6,7 @@ import type { NitroConfig } from '@nuxt/schema'
 import { defu } from 'defu'
 import { useNuxt } from './context.ts'
 import { tryUseNitro } from './nitro.ts'
+import { convertEnvValue, inferSupportedType } from './internal/env-types.ts'
 
 /**
  * Access 'resolved' Nuxt runtime configuration, with values updated from environment.
@@ -19,6 +19,8 @@ export function useRuntimeConfig (): Record<string, any> {
     prefix: 'NITRO_',
     altPrefix: 'NUXT_',
     envExpansion: nuxt.options.nitro.experimental?.envExpansion ?? !!process.env.NITRO_ENV_EXPANSION,
+    envTypes: nuxt.options.experimental?.runtimeConfigEnvTypes ?? nuxt.options.nitro?.experimental?.runtimeConfigEnvTypes,
+    dev: nuxt.options.dev,
   })
 }
 
@@ -68,17 +70,17 @@ type EnvOptions = {
   prefix?: string
   altPrefix?: string
   envExpansion?: boolean
+  envTypes?: boolean
+  dev?: boolean
 }
 
-function getEnv (key: string, opts: EnvOptions, env = process.env) {
+function getRawEnv (key: string, opts: EnvOptions, env = process.env) {
   const envKey = snakeCase(key).toUpperCase()
-  return destr(
-    env[opts.prefix + envKey] ?? env[opts.altPrefix + envKey],
-  )
+  return env[opts.prefix + envKey] ?? env[opts.altPrefix + envKey]
 }
 
 function _isObject (input: unknown) {
-  return typeof input === 'object' && !Array.isArray(input)
+  return typeof input === 'object' && input !== null && !Array.isArray(input)
 }
 
 function applyEnv (
@@ -87,25 +89,37 @@ function applyEnv (
   parentKey = '',
 ) {
   for (const key in obj) {
-    const subKey = parentKey ? `${parentKey}_${key}` : key
-    const envValue = getEnv(subKey, opts)
-    if (_isObject(obj[key])) {
-      // Same as before
-      if (_isObject(envValue)) {
-        obj[key] = { ...(obj[key] as any), ...(envValue as any) }
-        applyEnv(obj[key], opts, subKey)
-      } else if (envValue === undefined) {
-        // If envValue is undefined
-        // Then proceed to nested properties
-        applyEnv(obj[key], opts, subKey)
-      } else {
-        // If envValue is a primitive other than undefined
-        // Then set objValue and ignore the nested properties
-        obj[key] = envValue ?? obj[key]
-      }
-    } else {
-      obj[key] = envValue ?? obj[key]
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      continue
     }
+
+    const subKey = parentKey ? `${parentKey}_${key}` : key
+    const rawEnvValue = getRawEnv(subKey, opts)
+    const defaultValue = obj[key]
+
+    if (_isObject(defaultValue)) {
+      if (rawEnvValue === undefined) {
+        applyEnv(defaultValue, opts, subKey)
+      } else {
+        obj[key] = rawEnvValue
+      }
+    } else if (rawEnvValue !== undefined) {
+      if (opts.envTypes) {
+        const expectedType = inferSupportedType(defaultValue)
+        if (expectedType) {
+          obj[key] = convertEnvValue(rawEnvValue, expectedType, {
+            key: subKey,
+            dev: opts.dev,
+          })
+        } else {
+          obj[key] = rawEnvValue
+        }
+      } else {
+        // Flag OFF: raw string (Nitro 3 behavior)
+        obj[key] = rawEnvValue
+      }
+    }
+
     // Experimental env expansion
     if (opts.envExpansion && typeof obj[key] === 'string') {
       obj[key] = _expandFromEnv(obj[key])
