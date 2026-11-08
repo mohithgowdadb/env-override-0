@@ -12,7 +12,7 @@ import nuxtPkg from 'nuxt/package.json' with { type: 'json' }
 import { createNitro } from 'nitro/builder'
 import type { Nitro, NitroOptions as NitroBuilderOptions, NitroConfig } from 'nitro/types'
 import { addPlugin, addTemplate, addVitePlugin, ensureDependencyInstalled, findPath, getAddDependencyCommand, getDirectory, getLayerDirectories, packageName, resolveAlias, resolveIgnorePatterns, resolveNuxtModule, resolveTypePaths } from '@nuxt/kit'
-import { bundlerDiagnostics, getServerRuntime, setServerBuild } from '@nuxt/kit/internal'
+import { bundlerDiagnostics, getServerRuntime, setServerBuild, snapshotRuntimeConfigTypes } from '@nuxt/kit/internal'
 import escapeRE from 'escape-string-regexp'
 import { defu } from 'defu'
 import { defineEventHandler } from 'nitro/h3'
@@ -312,12 +312,20 @@ export async function bundle (nuxt: Nuxt & { _nitro?: Nitro }): Promise<void> {
       '#internal/nuxt/error-channel': () => nuxt.options.dev
         ? `export * from ${JSON.stringify(resolve(distDir, 'runtime/utils/error-channel'))}`
         : 'export {}',
-      '#internal/nuxt/nitro-config.mjs': () => [
-        `export const NUXT_ERROR_CHANNEL = ${JSON.stringify(nuxt.options.devServer.errorChannel)}`,
-        `export const NUXT_DEV_LOGS = ${!!nuxt.options.features.devLogs}`,
-        `export const NUXT_ASYNC_CONTEXT = ${!!nuxt.options.experimental.asyncContext}`,
-        `export const NUXT_SHARED_DATA = ${!!nuxt.options.experimental.sharedPrerenderData}`,
-      ].join('\n'),
+      '#internal/nuxt/nitro-config.mjs': () => {
+        const types = nuxt.options.experimental.runtimeConfigEnvTypes
+          ? snapshotRuntimeConfigTypes((nuxt._nitro?.options.runtimeConfig || nuxt.options.runtimeConfig) as Record<string, unknown>)
+          : {}
+        return [
+          `export const NUXT_DEV = ${!!nuxt.options.dev}`,
+          `export const NUXT_ERROR_CHANNEL = ${JSON.stringify(nuxt.options.devServer.errorChannel)}`,
+          `export const NUXT_DEV_LOGS = ${!!nuxt.options.features.devLogs}`,
+          `export const NUXT_ASYNC_CONTEXT = ${!!nuxt.options.experimental.asyncContext}`,
+          `export const NUXT_SHARED_DATA = ${!!nuxt.options.experimental.sharedPrerenderData}`,
+          `export const NUXT_RUNTIME_CONFIG_ENV_TYPES = ${!!nuxt.options.experimental.runtimeConfigEnvTypes}`,
+          `export const NUXT_RUNTIME_CONFIG_TYPES = ${JSON.stringify(types)}`,
+        ].join('\n')
+      },
     },
     routeRules: {
       '/**': typeof nuxt.options.experimental.ssrStreaming === 'object' && nuxt.options.experimental.ssrStreaming.enabled
@@ -882,7 +890,7 @@ export async function bundle (nuxt: Nuxt & { _nitro?: Nitro }): Promise<void> {
     // them: the copy that answers is the one this build bundles, not nitro's stub
     runtime: {
       fetch: 'nitro',
-      runtimeConfig: 'nitro/runtime-config',
+      runtimeConfig: resolve(distDir, 'runtime/runtime-config'),
       server: resolve(distDir, 'runtime/server'),
     },
     preview: { command: () => nitro.options.commands.preview },

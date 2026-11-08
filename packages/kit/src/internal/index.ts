@@ -48,3 +48,6 @@ export type { ClientBuildState } from './client-build-state.ts'
 
 export { SERVER_RUNTIME_VERSION, getServerRuntime } from './renderer.ts'
 export type { NuxtServerRuntime, NuxtServerRuntimeModule, RendererConfigName, ServerRuntimeOptions } from './renderer.ts'
+
+export { applyRuntimeConfigEnvTypes, convertEnvValue, inferSupportedType, snapshotRuntimeConfigTypes } from './env-types.ts'
+export type { ConvertEnvOptions, RuntimeConfigSupportedType, RuntimeConfigTypeMap } from './env-types.ts'
