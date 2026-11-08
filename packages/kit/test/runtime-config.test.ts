@@ -103,37 +103,182 @@ describe('useRuntimeConfig', () => {
   })
 })
 
-// These tests document the current environment variable value coercion
-// behaviour (see https://github.com/nuxt/nuxt/issues/24812). Environment
-// variable values are passed through `destr`, so JSON-compatible values are
-// deserialized. They pin the existing behaviour to catch unintended changes.
-describe('useRuntimeConfig env value casting', () => {
+// Tests for environment-variable overrides under Nitro 3 and the experimental
+// runtimeConfigEnvTypes flag (Nuxt Issue #36846).
+describe('useRuntimeConfig environment variable type compatibility (runtimeConfigEnvTypes)', () => {
   afterEach(() => {
     vi.unstubAllEnvs()
     vi.restoreAllMocks()
   })
 
-  it.each([
-    { name: 'empty string', envValue: '', expected: '' },
-    { name: 'string `hello-world`', envValue: 'hello-world', expected: 'hello-world' },
-    { name: 'string `0`', envValue: '0', expected: 0 },
-    { name: 'string `3000`', envValue: '3000', expected: 3000 },
-    { name: 'string `true`', envValue: 'true', expected: true },
-    { name: 'string `false`', envValue: 'false', expected: false },
-    { name: 'unset variable', envValue: undefined, expected: '' },
-    { name: 'string `undefined`', envValue: 'undefined', expected: '' },
-    { name: 'string `null`', envValue: 'null', expected: '' },
-    { name: 'string `4848e0`', envValue: '4848e0', expected: 4848 },
-    { name: 'quoted string `"4848e0"`', envValue: '"4848e0"', expected: '4848e0' },
-    { name: 'double-quoted string `""4848e0""`', envValue: '""4848e0""', expected: '"4848e0"' },
-    { name: 'object-like string', envValue: '{ foo: "bar" }', expected: '{ foo: "bar" }' },
-  ])('casts $name to $expected', ({ envValue, expected }) => {
-    const runtimeConfig = { myVar: '' }
-    vi.spyOn(context, 'useNuxt').mockReturnValue({ options: { nitro: { runtimeConfig, experimental: { envExpansion: false } } } } as any)
-    mockKlona.mockReturnValue(runtimeConfig)
-    vi.stubEnv('NITRO_MY_VAR', envValue)
+  it('Test A — Flag OFF: environment-variable overrides remain strings', () => {
+    const runtimeConfig = {
+      enabled: true,
+      identifier: '',
+      retries: 0,
+    }
+    vi.spyOn(context, 'useNuxt').mockReturnValue({
+      options: {
+        dev: true,
+        nitro: {
+          runtimeConfig,
+          experimental: { runtimeConfigEnvTypes: false },
+        },
+      },
+    } as any)
+    mockKlona.mockReturnValue(structuredClone(runtimeConfig))
+    vi.stubEnv('NUXT_ENABLED', 'false')
+    vi.stubEnv('NUXT_IDENTIFIER', '4848e0')
+    vi.stubEnv('NUXT_RETRIES', '10')
 
-    expect(useRuntimeConfig().myVar).toEqual(expected)
+    expect(useRuntimeConfig()).toEqual({
+      enabled: 'false',
+      identifier: '4848e0',
+      retries: '10',
+    })
+  })
+
+  it('Test B — Flag ON: environment-variable overrides follow default types', () => {
+    const runtimeConfig = {
+      enabled: true,
+      identifier: '',
+      retries: 0,
+    }
+    vi.spyOn(context, 'useNuxt').mockReturnValue({
+      options: {
+        dev: true,
+        nitro: {
+          runtimeConfig,
+          experimental: { runtimeConfigEnvTypes: true },
+        },
+      },
+    } as any)
+    mockKlona.mockReturnValue(structuredClone(runtimeConfig))
+    vi.stubEnv('NUXT_ENABLED', 'false')
+    vi.stubEnv('NUXT_IDENTIFIER', '4848e0')
+    vi.stubEnv('NUXT_RETRIES', '10')
+
+    expect(useRuntimeConfig()).toEqual({
+      enabled: false,
+      identifier: '4848e0',
+      retries: 10,
+    })
+  })
+
+  it('Test C — Type depends on default (string default remains string)', () => {
+    const runtimeConfig = {
+      value: '',
+    }
+    vi.spyOn(context, 'useNuxt').mockReturnValue({
+      options: {
+        dev: true,
+        nitro: {
+          runtimeConfig,
+          experimental: { runtimeConfigEnvTypes: true },
+        },
+      },
+    } as any)
+    mockKlona.mockReturnValue(structuredClone(runtimeConfig))
+    vi.stubEnv('NUXT_VALUE', 'false')
+
+    expect(useRuntimeConfig()).toEqual({
+      value: 'false',
+    })
+  })
+
+  it('Test D — Number default converts scientific notation / numeric string', () => {
+    const runtimeConfig = {
+      value: 0,
+    }
+    vi.spyOn(context, 'useNuxt').mockReturnValue({
+      options: {
+        dev: true,
+        nitro: {
+          runtimeConfig,
+          experimental: { runtimeConfigEnvTypes: true },
+        },
+      },
+    } as any)
+    mockKlona.mockReturnValue(structuredClone(runtimeConfig))
+    vi.stubEnv('NUXT_VALUE', '4848e0')
+
+    expect(useRuntimeConfig()).toEqual({
+      value: 4848,
+    })
+  })
+
+  it('Test E — Invalid number preserves string, warns in dev, does not crash', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const runtimeConfig = {
+      value: 0,
+    }
+    vi.spyOn(context, 'useNuxt').mockReturnValue({
+      options: {
+        dev: true,
+        nitro: {
+          runtimeConfig,
+          experimental: { runtimeConfigEnvTypes: true },
+        },
+      },
+    } as any)
+    mockKlona.mockReturnValue(structuredClone(runtimeConfig))
+    vi.stubEnv('NUXT_VALUE', 'invalid')
+
+    expect(useRuntimeConfig()).toEqual({
+      value: 'invalid',
+    })
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[nuxt] Failed to convert environment variable for `value` to number'),
+    )
+    expect(warnSpy.mock.calls[0]?.[0]).not.toContain('invalid')
+  })
+
+  it('Test F — Missing variable retains default silently with no warning', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const runtimeConfig = {
+      value: 3000,
+    }
+    vi.spyOn(context, 'useNuxt').mockReturnValue({
+      options: {
+        dev: true,
+        nitro: {
+          runtimeConfig,
+          experimental: { runtimeConfigEnvTypes: true },
+        },
+      },
+    } as any)
+    mockKlona.mockReturnValue(structuredClone(runtimeConfig))
+
+    expect(useRuntimeConfig()).toEqual({
+      value: 3000,
+    })
+    expect(warnSpy).not.toHaveBeenCalled()
+  })
+
+  it('Test G — Invalid boolean preserves string, warns in dev, does not crash', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const runtimeConfig = {
+      enabled: true,
+    }
+    vi.spyOn(context, 'useNuxt').mockReturnValue({
+      options: {
+        dev: true,
+        nitro: {
+          runtimeConfig,
+          experimental: { runtimeConfigEnvTypes: true },
+        },
+      },
+    } as any)
+    mockKlona.mockReturnValue(structuredClone(runtimeConfig))
+    vi.stubEnv('NUXT_ENABLED', 'yes')
+
+    expect(useRuntimeConfig()).toEqual({
+      enabled: 'yes',
+    })
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[nuxt] Failed to convert environment variable for `enabled` to boolean'),
+    )
+    expect(warnSpy.mock.calls[0]?.[0]).not.toContain('yes')
   })
 })
 
